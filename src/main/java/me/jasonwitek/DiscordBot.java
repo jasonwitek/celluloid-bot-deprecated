@@ -22,9 +22,7 @@ public class DiscordBot {
     public static void main(String[] args) throws InterruptedException {
 
         String token = System.getenv("DISCORD_BOT_CELLULOID_TOKEN");
-        String serverID = System.getenv("DISCORD_BOT_CELLULOID_SERVERID");
         
-
         File configFile = new File(configFilePath);
         Properties properties = new Properties();
         loadConfig(configFile, properties);
@@ -45,7 +43,10 @@ public class DiscordBot {
             .awaitReady();
         System.out.println("Bot Successfully Started");
 
-        Guild server = bot.getGuildById(serverID);
+        // Gets the first server
+        // shouldn't be a problem since the bot will only be in 1 server at a time
+        Guild server = bot.getGuilds().getFirst(); 
+
         verifyServerExists(server);
 
         initializeEventManager(eventManager, bot, server);
@@ -107,8 +108,6 @@ public class DiscordBot {
     }
 
     private static void registerPublicSlashCommands(Guild server) {
-        server.upsertCommand("suggestmovie", "Suggest a movie to add to the list")
-            .queue();
         server.upsertCommand("watchedmovies", "Returns a list of the movies we have already watched")
              .queue();
         server.upsertCommand("ratemovie", "Rate the current movie 1 - 5 stars")
@@ -117,6 +116,9 @@ public class DiscordBot {
         server.upsertCommand("topten", "Returns a list of the top ten movies we have watched")
              .queue();
         server.upsertCommand("help", "Display the help message")
+             .queue();
+        server.upsertCommand("search", "Search for a specific Movie")
+             .addOption(OptionType.STRING, "query", "The name of the movie you wish to search for", true)
              .queue();
     }
 

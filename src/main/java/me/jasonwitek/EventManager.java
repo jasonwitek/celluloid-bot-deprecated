@@ -44,7 +44,7 @@ public class EventManager {
     private MessageChannel eventChannel;        // stored in eventmanager.eventchannel.id
     private VoiceChannel viewingChannel;        // stored in eventmanager.viewingchannel.id
     private Role moviePingRole;                 // stored in eventmanager.moviepingrole.id
-    private long pollMessageID;           // stored in eventmanager.pollmessage.id
+    private long pollMessageID;                 // stored in eventmanager.pollmessage.id
 
     public EventManager(MovieManager inputMovieManager, Properties inputProperties) {
 
@@ -56,12 +56,8 @@ public class EventManager {
     public void setJDA(JDA inputBot, Guild inputGuild) {
         jda = inputBot;
         server = inputGuild;
-        if (movManager.getCurrentMovie().getMovieTitle().length() > 128) {
-            jda.getPresence().setActivity(Activity.playing("pepper"));
-        } else {
-            jda.getPresence().setActivity(Activity.playing(movManager.getCurrentMovie().getMovieTitle() 
-            + " (" + movManager.getCurrentMovie().getReleaseYear() + ")" ));
-        }
+
+        setBotActivityStatus();
         
         announcementChannel = getPropertyFor(
             "eventmanager.announcementchannel.id", 
@@ -99,6 +95,21 @@ public class EventManager {
         );
     }
 
+    private void setBotActivityStatus() {
+        if (movManager.getCurrentMovie() == null) {
+            jda.getPresence().setActivity(Activity.customStatus("Awaiting for Movie"));
+            return;
+        }
+
+        if (movManager.getCurrentMovie().getMovieTitle().length() > 120) {
+            jda.getPresence().setActivity(Activity.playing("pepper"));
+        } else {
+            jda.getPresence().setActivity(Activity.playing(movManager.getCurrentMovie().getEmoji()
+            + " " + movManager.getCurrentMovie().getMovieTitle() 
+            + " (" + movManager.getCurrentMovie().getReleaseYear() + ")" ));
+        }
+    }
+
     private String require(Properties p, String s) {
         String value = p.getProperty(s);
         if (value == null || value.isBlank()) {
@@ -132,6 +143,7 @@ public class EventManager {
         //Closes rating
         movManager.setIsRatingOpen(false);
 
+        // Tabulate the ratings
         Map<String, Integer> movieRatings = movManager.getRatings();
         movManager.eraseRatings();
         int numOfRatings = movieRatings.size();
@@ -140,6 +152,12 @@ public class EventManager {
             totalRating += entry.getValue();
         }
 
+        updateCurrentMovieSetPrevious(numOfRatings, totalRating);
+
+        return buildAndSendPollMessage(wednesdayPollClose);
+    }
+
+    private void updateCurrentMovieSetPrevious(int numOfRatings, int totalRating) {
         //prevents null pointer execption if no movies have previously been watched
         // or if its the first time the botis run
         if (movManager.getCurrentMovie() != null) {
@@ -151,14 +169,53 @@ public class EventManager {
             movManager.sortWatchedUnWatched();
             movManager.updateAllMovies();
         }
-
-        return buildAndSendPollMessage(wednesdayPollClose);
     }
 
     private boolean buildAndSendPollMessage(ZonedDateTime wednesdayPollClose) {
 
-        List<Movie> thisWeeksMovies = new ArrayList<>();
+        List<Movie> thisWeeksMovies = generateThisWeeksMovies();
 
+        long unixTime = wednesdayPollClose.toEpochSecond();
+        StringBuilder pollMessage = new StringBuilder();
+
+        pollMessage.append("Thank you for coming to watch " 
+            + movManager.getPreviousMovie().getMovieTitle() 
+            + "\n\n");
+        double averageRating = movManager.getPreviousMovie().calculateAverageRating();
+        
+        pollMessage.append(movManager.getPreviousMovie().getMovieTitle() 
+            + " was collectively rated: **⭐" 
+            + averageRating
+            + "**\n\n");
+
+        pollMessage.append("Please vote for this weeks movie: \n");
+
+
+        for (Movie m : thisWeeksMovies) {
+                pollMessage.append(String.format("%s %s (%d)\n",
+                     m.getEmoji(),
+                     m.getMovieTitle(),
+                     m.getReleaseYear()));
+        }
+
+        pollMessage.append("\n*Voting Closes on: \n" + "<t:" + unixTime + ":f>* \n");
+        pollMessage.append("||" + moviePingRole.getAsMention() + "||");
+
+        announcementChannel.sendMessage(pollMessage.toString()).queue(message -> { 
+            setPollMessageID(message.getIdLong());
+            for (Movie m : thisWeeksMovies) {
+
+                Emoji e = Emoji.fromUnicode(m.getEmoji());
+                message.addReaction(e).queue();
+            }
+        });
+        
+        movManager.setThisWeeksMovieOptions(thisWeeksMovies);
+        return true;
+    }
+  
+    private List<Movie> generateThisWeeksMovies() {
+        List<Movie> thisWeeksMovies = new ArrayList<>();
 
         List<Movie> unWatched = movManager.getUnwatchedMovies();
 
@@ -190,48 +247,8 @@ public class EventManager {
                 }
             }
         }
-
-        long unixTime = wednesdayPollClose.toEpochSecond();
-        StringBuilder pollMessage = new StringBuilder();
-
-        pollMessage.append("Thank you for coming to watch " 
-            + movManager.getPreviousMovie().getMovieTitle() 
-            + "\n\n");
-        // premptively adding rating compatiblity
-        double averageRating = movManager.getPreviousMovie().calculateAverageRating();
-        
-        pollMessage.append(movManager.getPreviousMovie().getMovieTitle() 
-            + " was collectively rated: **⭐" 
-            + averageRating
-            + "**\n\n");
-
-        pollMessage.append("Please vote for this weeks movie: \n");
-
-
-        for (Movie m : thisWeeksMovies) {
-                pollMessage.append(String.format("%s %s (%d)\n",
-                     m.getEmoji(),
-                     m.getMovieTitle(),
-                     m.getReleaseYear()));
-        }
-        List<Movie> finalThisWeeksMovies = thisWeeksMovies;
-
-        pollMessage.append("\n*Voting Closes on: \n" + "<t:" + unixTime + ":f>* \n");
-        pollMessage.append("||" + moviePingRole.getAsMention() + "||");
-        announcementChannel.sendMessage(pollMessage.toString()).queue(message -> { 
-            setPollMessageID(message.getIdLong());
-            for (Movie m : finalThisWeeksMovies) {
-
-                Emoji e = Emoji.fromUnicode(m.getEmoji());
-                message.addReaction(e).queue();
-            }
-        });
-        
-        movManager.setThisWeeksMovieOptions(finalThisWeeksMovies);
-        return true;
+        return thisWeeksMovies;
     }
-  
-
 
 
 
@@ -240,12 +257,7 @@ public class EventManager {
         Movie thisWeeksMovie = getMostVotedMovie();
         movManager.setCurrentMovie(thisWeeksMovie);
         
-        if (movManager.getCurrentMovie().getMovieTitle().length() > 128) {
-            jda.getPresence().setActivity(Activity.playing("pepper"));
-        } else {
-            jda.getPresence().setActivity(Activity.playing(movManager.getCurrentMovie().getMovieTitle() 
-            + " (" + movManager.getCurrentMovie().getReleaseYear() + ")" ));
-        }
+        setBotActivityStatus();
 
         Movie currentMovie = movManager.getCurrentMovie();
 
@@ -306,14 +318,34 @@ public class EventManager {
 
     private Movie getMostVotedMovie() {
 
-        Message pollMessage = getAnnouncementChannel().retrieveMessageById(pollMessageID).complete();
-
-        List<MessageReaction> reactions = pollMessage.getReactions();
-        List<Pair<String, Integer>> voteList= new ArrayList<>();
-        int highestVote = 0;
-
+        List<MessageReaction> reactions = getAnnouncementChannel()
+            .retrieveMessageById(pollMessageID).complete().getReactions();
         List<Movie> thisWeekMovies = movManager.getThisWeeksMovieOptions();
 
+        Pair<List<Pair<String, Integer>>, Integer> pair = compileMessageVotes(thisWeekMovies, reactions);
+        List<Pair<String, Integer>> voteList = pair.getFirst();
+        int highestVote = pair.getSecond();
+
+        // Removes any movies that do not have the most votes
+        // Size() > 1 if there is a tie
+        voteList.removeIf(element -> element.getSecond() != highestVote);
+
+        Random random = new Random();
+        // Should get the emoji of one of the top ranked movies
+        String selectedMovieAsEmoji = voteList.get(random.nextInt(voteList.size())).getFirst();
+
+        for (Movie m : thisWeekMovies) {
+            if (m.getEmoji().equals(selectedMovieAsEmoji)) {
+                return m;
+            }
+        }
+
+        throw new NoSuchElementException("Unable to find the correct movie; check to make sure emojis are correct");
+    }
+
+    private Pair<List<Pair<String, Integer>>, Integer> compileMessageVotes(List<Movie> thisWeekMovies, List<MessageReaction> reactions) {
+        int highestVote = 0;
+        List<Pair<String, Integer>> voteList = new ArrayList<>();
         for (MessageReaction mR : reactions) {
             boolean isInThisWeekMovies = false;
             for (Movie m : thisWeekMovies) {
@@ -331,25 +363,7 @@ public class EventManager {
                 highestVote = mR.getCount();
             }
         }
-
-        final int finalHighestVote = highestVote;
-
-        // Removes any movies that do not have the most votes
-        // Size() > 1 if there is a tie
-        voteList.removeIf(element -> element.getSecond() != finalHighestVote);
-
-        Random random = new Random();
-        // Should get the emoji of one of the top ranked movies
-        String selectedMovieAsEmoji = voteList.get(random.nextInt(voteList.size())).getFirst();
-
-        
-        for (Movie m : thisWeekMovies) {
-            if (m.getEmoji().equals(selectedMovieAsEmoji)) {
-                return m;
-            }
-        }
-
-        throw new NoSuchElementException("Unable to find the correct movie; check to make sure emojis are correct");
+        return new Pair<List<Pair<String, Integer>>, Integer>(voteList, highestVote);
     }
     
     private String convertRuntimeToString(int min) {

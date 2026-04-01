@@ -23,20 +23,15 @@ public class BotCommands extends ListenerAdapter {
     private MovieManager movieManager;
     private EventManager eventManager;
     private WeeklyScheduler scheduler;
-    private String adminID = "715017058080915536"; // User ID of who is allow to configure the Bo
+    private String adminID = "715017058080915536"; // User ID of who is allow to configure the Bot
 
     public BotCommands(MovieManager inputMovieManager, EventManager inputEventManager, WeeklyScheduler inputWeeklyScheduler) {
 
-        movieManager = Objects.requireNonNull(inputMovieManager,"MovieManager value is null; Make sure to pass a to the BotCommands");
-        eventManager = Objects.requireNonNull(inputEventManager, "EventManager value is null; Make sure to pass a to the BotCommands");
-        scheduler = Objects.requireNonNull(inputWeeklyScheduler, "WeeklyScheduler value is null; make sure to pass a to the BotCommands");
+        movieManager = Objects.requireNonNull(inputMovieManager,"MovieManager value is null; Make sure to pass a MovieManager to the BotCommands");
+        eventManager = Objects.requireNonNull(inputEventManager, "EventManager value is null; Make sure to pass a EventManager to the BotCommands");
+        scheduler = Objects.requireNonNull(inputWeeklyScheduler, "WeeklyScheduler value is null; make sure to pass a WeeklyScheduler to the BotCommands");
 
     }
-
-
-
-
-
 
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
@@ -72,10 +67,10 @@ public class BotCommands extends ListenerAdapter {
 
             // Default User Commands
             case "help" -> help(event);
-            case "suggestmovie" -> suggestMovie(event);
             case "watchedmovies" -> watchedMovies(event, user);
             case "ratemovie" -> rateMovie(event, user);
             case "topten" -> topTen(event);
+            case "search" -> search(event);
 
             // Test Scheduler Methods
             case "testpollmessage" -> testPollMessage(event, user);
@@ -382,16 +377,6 @@ public class BotCommands extends ListenerAdapter {
         event.getHook().sendMessage(response.toString()).setEphemeral(true).queue();
     }
 
-    private void suggestMovie(SlashCommandInteractionEvent event) {
-        StringBuilder response = new StringBuilder();
-
-        response.append("Want to suggest a movie to add to the list?\n");
-        response.append("Fill out the form **here**: \n");
-        response.append("https://forms.gle/WsxwhiU7oQ21wPrQ6");
-
-        event.getHook().sendMessage(response.toString()).setEphemeral(true).queue();
-    }
-
     private void topTen(SlashCommandInteractionEvent event) {
         StringBuilder outputMessage = new StringBuilder();
 
@@ -417,7 +402,10 @@ public class BotCommands extends ListenerAdapter {
         event.getHook().sendMessage(outputMessage.toString()).queue();
     }
 
-
+    private void search(SlashCommandInteractionEvent event) {
+        String movieSearchTitle = event.getOption("query").getAsString();
+        event.getHook().sendMessage(movieSearchTitle).queue();
+    }
 
 
     private void testPollMessage(SlashCommandInteractionEvent event, User user) {
